@@ -1,0 +1,14 @@
+pointer_increment = { ">" }
+pointer_decrement = { "<" }
+data_increment = { "+" }
+data_decrement = { "-" }
+input = { "," }
+output = { "." }
+simple_command = { ( pointer_increment | pointer_decrement | data_increment | data_decrement | input | output ) }
+loop_command = { "[" ~ command* ~ "]" }
+comment = { ( ASCII_ALPHANUMERIC | NEWLINE | " " ) }
+
+command = {
+    ( simple_command | loop_command | comment )
+}
+program = { command* }

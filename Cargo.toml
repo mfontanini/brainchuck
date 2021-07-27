@@ -1,0 +1,10 @@
+[package]
+name = "brainchuck"
+version = "0.1.0"
+authors = ["Matias Fontanini <matias.fontanini@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+pest = "^2.1"
+pest_derive = "^2.1"
+thiserror = "^1.0"
