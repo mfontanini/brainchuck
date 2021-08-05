@@ -8,3 +8,4 @@ edition = "2018"
 pest = "^2.1"
 pest_derive = "^2.1"
 thiserror = "^1.0"
+inkwell = { git = "https://github.com/TheDan64/inkwell", rev = "41857f9", features = ["llvm11-0"] }

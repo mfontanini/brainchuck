@@ -22,6 +22,7 @@ pub enum Command {
 pub fn parse(input: &str) -> Result<Vec<Command>, Error> {
     let pairs = BrainfuckParser::parse(Rule::program, input)?;
     let program = pairs.peek().unwrap();
+    println!("{:?}", pairs);
     let commands = parse_commands(program.into_inner());
     Ok(commands)
 }
@@ -124,14 +125,18 @@ mod tests {
 
     #[test]
     fn comment_within_code() {
-        let input = r#"[this is part of the loop
+        let input = r#"+.[This is part of the loop
         I can also increment the pointer >
         and print some stuff .
         ]"#;
         assert_eq!(
-            vec![Command::Loop {
-                body: vec![Command::IncrementPointer, Command::Output]
-            }],
+            vec![
+                Command::IncrementData,
+                Command::Output,
+                Command::Loop {
+                    body: vec![Command::IncrementPointer, Command::Output]
+                }
+            ],
             parse_valid(input)
         );
     }
