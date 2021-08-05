@@ -1,12 +1,5 @@
-use pest::{
-    iterators::{Pair, Pairs},
-    Parser,
-};
+use std::str::Chars;
 use thiserror::Error;
-
-#[derive(Parser)]
-#[grammar = "../grammar/brainfuck.pest"]
-pub struct BrainfuckParser;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
@@ -20,39 +13,50 @@ pub enum Command {
 }
 
 pub fn parse(input: &str) -> Result<Vec<Command>, Error> {
-    let pairs = BrainfuckParser::parse(Rule::program, input)?;
-    let program = pairs.peek().unwrap();
-    println!("{:?}", pairs);
-    let commands = parse_commands(program.into_inner());
+    let (commands, _) = parse_commands(input.chars(), false)?;
     Ok(commands)
 }
 
-fn parse_commands(pairs: Pairs<Rule>) -> Vec<Command> {
-    pairs.map(parse_command).filter_map(|c| c).collect()
-}
-
-fn parse_command(pair: Pair<Rule>) -> Option<Command> {
-    match pair.as_rule() {
-        Rule::pointer_increment => Some(Command::IncrementPointer),
-        Rule::pointer_decrement => Some(Command::DecrementPointer),
-        Rule::data_increment => Some(Command::IncrementData),
-        Rule::data_decrement => Some(Command::DecrementData),
-        Rule::input => Some(Command::Input),
-        Rule::output => Some(Command::Output),
-        Rule::loop_command => {
-            let body = parse_commands(pair.into_inner());
-            Some(Command::Loop { body })
+fn parse_commands(mut input: Chars, mut in_loop: bool) -> Result<(Vec<Command>, Chars), Error> {
+    let mut output = Vec::new();
+    while let Some(token) = input.next() {
+        let command = match token {
+            '>' => Some(Command::IncrementPointer),
+            '<' => Some(Command::DecrementPointer),
+            '+' => Some(Command::IncrementData),
+            '-' => Some(Command::DecrementData),
+            ',' => Some(Command::Input),
+            '.' => Some(Command::Output),
+            '[' => {
+                let (body, next_input) = parse_commands(input, true)?;
+                input = next_input;
+                Some(Command::Loop { body })
+            }
+            ']' => {
+                if !in_loop {
+                    return Err(Error::BrokenLoop);
+                } else {
+                    in_loop = false;
+                    break;
+                }
+            }
+            _ => None,
+        };
+        if let Some(command) = command {
+            output.push(command);
         }
-        Rule::simple_command | Rule::command => parse_command(pair.into_inner().next().unwrap()),
-        Rule::comment => None,
-        _ => panic!("Unexpected rule element {}", pair.as_str()),
+    }
+    if !in_loop {
+        Ok((output, input))
+    } else {
+        Err(Error::BrokenLoop)
     }
 }
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error(transparent)]
-    Parse(#[from] pest::error::Error<Rule>),
+    #[error("Broken loop")]
+    BrokenLoop,
 }
 
 #[cfg(test)]
@@ -61,6 +65,10 @@ mod tests {
 
     fn parse_valid(input: &str) -> Vec<Command> {
         parse(input).expect("Invalid input")
+    }
+
+    fn parse_invalid(input: &str) -> Error {
+        parse(input).unwrap_err()
     }
 
     #[test]
@@ -109,6 +117,21 @@ mod tests {
             }],
         }];
         assert_eq!(program, parse_valid("[[,]]"));
+    }
+
+    #[test]
+    fn unfinished_loop() {
+        assert!(matches!(parse_invalid("["), Error::BrokenLoop));
+    }
+
+    #[test]
+    fn unfinished_nested_loop() {
+        assert!(matches!(parse_invalid("[["), Error::BrokenLoop));
+    }
+
+    #[test]
+    fn unopen_loop() {
+        assert!(matches!(parse_invalid("]"), Error::BrokenLoop));
     }
 
     #[test]
