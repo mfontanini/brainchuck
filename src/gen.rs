@@ -2,11 +2,13 @@ use crate::parser::Command;
 use inkwell::{
     builder::Builder,
     context::Context,
-    execution_engine::JitFunction,
+    execution_engine::{FunctionLookupError, JitFunction},
     module::{Linkage, Module},
+    support::LLVMString,
     values::{FunctionValue, IntValue, PointerValue},
     IntPredicate, OptimizationLevel,
 };
+use thiserror::Error;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -34,17 +36,20 @@ impl<'a> Codegen<'a> {
         }
     }
 
-    pub fn run_program(self, program: &[Command], memory_size: u16) -> Result<ProgramResult, ()> {
+    pub fn run_program(
+        self,
+        program: &[Command],
+        memory_size: u16,
+    ) -> Result<ProgramResult, Error> {
         let engine = self
             .module
             .create_jit_execution_engine(OptimizationLevel::None)
-            .expect("Failed to build engine");
+            .map_err(Error::JitEngineCreation)?;
         self.compile_program(program, memory_size)?;
+
         let result = unsafe {
-            let main: JitFunction<unsafe extern "C" fn() -> ProgramResult> = engine
-                .get_function("main")
-                .ok()
-                .expect("Failed to get main");
+            let main: JitFunction<unsafe extern "C" fn() -> ProgramResult> =
+                engine.get_function("main")?;
             main.call()
         };
         Ok(result)
@@ -102,7 +107,7 @@ impl<'a> Codegen<'a> {
         }
     }
 
-    fn compile_program(&self, program: &[Command], memory_size: u16) -> Result<(), ()> {
+    fn compile_program(&self, program: &[Command], memory_size: u16) -> Result<(), Error> {
         let program_context = self.create_context(memory_size);
         program_context.compile_program(program)?;
 
@@ -111,7 +116,6 @@ impl<'a> Codegen<'a> {
 
         self.builder
             .build_aggregate_return(&[state.pointer.into(), state.cell.unwrap().into()]);
-        self.module.print_to_stderr();
 
         Ok(())
     }
@@ -192,13 +196,13 @@ struct ProgramContext<'a, 'ctx> {
 }
 
 impl<'a, 'ctx> ProgramContext<'a, 'ctx> {
-    fn compile_program(&self, commands: &[Command]) -> Result<(), ()> {
+    fn compile_program(&self, commands: &[Command]) -> Result<(), Error> {
         let state = State::from_context(self);
         self.compile_commands(commands, state)?;
         Ok(())
     }
 
-    fn compile_commands(&self, commands: &[Command], mut state: State<'ctx>) -> Result<(), ()> {
+    fn compile_commands(&self, commands: &[Command], mut state: State<'ctx>) -> Result<(), Error> {
         for command in commands {
             self.compile_command(command, &mut state)?;
         }
@@ -206,7 +210,7 @@ impl<'a, 'ctx> ProgramContext<'a, 'ctx> {
         Ok(())
     }
 
-    fn compile_command(&self, command: &Command, state: &mut State<'ctx>) -> Result<(), ()> {
+    fn compile_command(&self, command: &Command, state: &mut State<'ctx>) -> Result<(), Error> {
         let one = self.context.i8_type().const_int(1, false);
         // TODO: validate
         match command {
@@ -247,7 +251,7 @@ impl<'a, 'ctx> ProgramContext<'a, 'ctx> {
         Ok(())
     }
 
-    fn build_loop(&self, body: &[Command], state: &mut State<'ctx>) -> Result<(), ()> {
+    fn build_loop(&self, body: &[Command], state: &mut State<'ctx>) -> Result<(), Error> {
         state.store(self);
         let loop_check = self.context.append_basic_block(self.main, "loop_check");
         let loop_body = self.context.append_basic_block(self.main, "loop_body");
@@ -274,6 +278,15 @@ impl<'a, 'ctx> ProgramContext<'a, 'ctx> {
         self.builder.position_at_end(continuation);
         Ok(())
     }
+}
+
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error("Failed to create JIT engine: {0}")]
+    JitEngineCreation(LLVMString),
+
+    #[error("Error looking up function: {0}")]
+    FunctionLookup(#[from] FunctionLookupError),
 }
 
 #[cfg(test)]
