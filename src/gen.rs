@@ -36,6 +36,12 @@ impl<'a> Codegen<'a> {
         }
     }
 
+    pub fn generate_code(self, program: &[Command], memory_size: u16) -> Result<String, Error> {
+        self.compile_program(program, memory_size)?;
+        let ir_code = self.module.print_to_string().to_string();
+        Ok(ir_code)
+    }
+
     pub fn run_program(
         self,
         program: &[Command],
@@ -43,10 +49,10 @@ impl<'a> Codegen<'a> {
     ) -> Result<ProgramResult, Error> {
         let engine = self
             .module
-            .create_jit_execution_engine(OptimizationLevel::None)
+            .create_jit_execution_engine(OptimizationLevel::Aggressive)
             .map_err(Error::JitEngineCreation)?;
-        self.compile_program(program, memory_size)?;
 
+        self.compile_program(program, memory_size)?;
         let result = unsafe {
             let main: JitFunction<unsafe extern "C" fn() -> ProgramResult> =
                 engine.get_function("main")?;
