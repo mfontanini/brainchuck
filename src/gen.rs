@@ -6,7 +6,7 @@ use inkwell::{
     module::{Linkage, Module},
     support::LLVMString,
     values::{FunctionValue, IntValue, PointerValue},
-    IntPredicate, OptimizationLevel,
+    AddressSpace, IntPredicate, OptimizationLevel,
 };
 use thiserror::Error;
 
@@ -64,14 +64,35 @@ impl<'a> Codegen<'a> {
     fn initialize_variables(&self, memory_size: u16) -> Variables<'a> {
         let i8_type = self.context.i8_type();
         let i16_type = self.context.i16_type();
+        let i32_type = self.context.i32_type();
+        let i64_type = self.context.i64_type();
         let memory_type = i8_type.array_type(memory_size.into());
 
         let cells = self.builder.build_alloca(memory_type, "cells");
         let pointer = self.builder.build_alloca(i16_type, "pointer");
         self.builder
-            .build_store(cells, i8_type.array_type(memory_size.into()).const_zero());
-        self.builder
             .build_store(pointer, i16_type.const_int(0, false));
+
+        // Represent void pointers as i8*
+        let void_pointer = i8_type.ptr_type(AddressSpace::Generic);
+        let memset = self.module.add_function(
+            "memset",
+            void_pointer.fn_type(
+                &[void_pointer.into(), i32_type.into(), i64_type.into()],
+                false,
+            ),
+            Some(Linkage::External),
+        );
+        let number_elements = i64_type.const_int(memory_size as u64, false);
+        self.builder.build_call(
+            memset,
+            &[
+                cells.into(),
+                i32_type.const_int(0, false).into(),
+                number_elements.into(),
+            ],
+            "memset_cells",
+        );
 
         Variables { cells, pointer }
     }
