@@ -15,6 +15,10 @@ struct Options {
     #[structopt(short, long)]
     print_code: bool,
 
+    /// The number of cells to allocate. e.g. the amount of memory that will be used when running this program
+    #[structopt(short, long, default_value = "30000")]
+    cells: u16,
+
     /// The source file to read the program from. Use "-" to read it from stdin
     #[structopt(name = "source")]
     source: String,
@@ -70,7 +74,7 @@ fn main() {
     let context = Context::create();
     let codegen = Codegen::from_context(&context);
     if options.print_code {
-        print_code(codegen, &program, 50);
+        print_code(codegen, &program, options.cells);
     } else {
         run(codegen, &program, 50);
     }
